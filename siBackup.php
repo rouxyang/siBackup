@@ -5,11 +5,13 @@
  * Scroll Incremental Backup Script
  * 滚动增量备份脚本
  *
- * 目前仅支持 BAE.
- *
  * 精英王子(m@jybox.net)
  * http://jyprince.me
  * GPLv3
+ *
+ * 支持的储存后端：
+ *
+ * * BAE
  *
  * 最低要求 PHP 5.4, 请在终端运行。
  * 依赖 tar, curl.
@@ -22,11 +24,12 @@
  *
  * 默认情况下，该脚本需要以 root 运行，会将 /home 下的每个文件夹单独打包并上传，
  * 默认的文件名形如 2013.09.14-20-00-(<nodeName>)<username>.tar.gz .
- * 其中 nodeName 是为了将上传到同一个网盘的，来自不同服务器的文件区分开。
+ * 其中 nodeName 是为了将上传到同一个储存后端的，来自不同服务器的文件区分开。
  *
  * 该脚本默认会创建一个名为 /root/siBackup/ 的文件夹($dataHome)用于储存数据和临时文件。
  *
  * * $dataHome/lastBackupTime 以时间戳的形式保存上次备份时间
+ * * $dataHome/BAEToken BAE 的 API 授权信息
  * * $dataHome/<username>.list 本次备份的文件列表，将以 -T 参数传给 tar
  * * $dataHome/<time>-(<node>)<username>.tar.gz 每个用户的备份包，上传后会被删除
  * * $dataHome/<username>.time.json 每个文件的上次备份时间，JSON 格式
@@ -56,7 +59,7 @@ $dataHome = "/root/siBackup";
 
 $nodeName = "main";
 
-$uploader = BAEUploader("siBackup", '3.a9a6b186d8deab1ad52fa2313d605cdf.2052090.1618377470.3719205256-1124134');
+$uploader = BAEUploader("siBackup", 'vi4BQrheygB0SO4SFACNpGYn', 'GtWUnndR1RVXKwKY5I2iT2dXteRQG14');
 
 $timeStr = date("Y.m.d-H-i");
 
@@ -156,30 +159,54 @@ function searchFiles($homeDir, &$filetime)
     return $files;
 };
 
-function BAEUploader($BAE_AppName, $BAE_AccessToken)
+function BAEUploader($BAE_AppName, $BAE_ApiKey, $BAE_SecretKey)
 {
-    /**
-     * Access Token 获取流程
-     * 改写自 http://www.haiyun.me/archives/859.html
-     *
-     * 登录 http://developer.baidu.com/dev#/create , 注册成为百度开发者，
-     * 创建一个应用，并开通 PCS API 的权限。
-     *
-     * 通过 API Key 获取 Device Code 和 User Code:
-     *
-     *     curl -k -L -d 'client_id=<API Key>&response_type=device_code&scope=basic,netdisk' 'https://openapi.baidu.com/oauth/2.0/device/code'
-     *
-     * 在浏览器打开 https://openapi.baidu.com/device , 输入获取到的 User Code, 提交。
-     *
-     * 通过 Device Code 获取 Refresh Token 和 Access Token;
-     *
-     *     curl -k -L -d 'grant_type=device_token&code=<Device Code>&client_id=<API Key>&client_secret=<API Secret>' 'https://openapi.baidu.com/oauth/2.0/token'
-     *
-     * 此时已经获取到 Access Token, Access Token 有效期为 30 天，30 天后需要刷新 Access Token:
-     *
-     *     curl -k -L -d 'grant_type=refresh_token&refresh_token=<Refresh Token>&client_id=<API Key>&client_secret=<API Secret>' 'https://openapi.baidu.com/oauth/2.0/token'
-     *
-     */
+    global $dataHome, $time;
+
+    $funcCheckToken = function() use($dataHome, $time) {
+        $tokens = json_decode(file_get_contents("{$dataHome}/BAEToken"), true);
+
+        if($tokens["createTime"] < ($time - 30 * 24 * 3600))
+            return false;
+
+        return true;
+    };
+
+    if(!file_exists("{$dataHome}/BAEToken"))
+    {
+        $result = json_decode(shell_exec("curl -k -L -d 'client_id={$BAE_ApiKey}&response_type=device_code&scope=basic,netdisk' 'https://openapi.baidu.com/oauth/2.0/device/code'"), true);
+
+        $deviceCode = $result["device_code"];
+        print "Please open https://openapi.baidu.com/device in web browser and input {$result['user_code']}, press any key to continue.\n";
+        fgetc(STDIN);
+
+        $result = json_decode(shell_exec("curl -k -L -d 'grant_type=device_token&code={$deviceCode}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token'"), true);
+
+        $tokens = [];
+        $tokens["createTime"] = $time;
+        $tokens["refreshToken"] = $result["refresh_token"];
+        $BAE_AccessToken = $tokens["accessToken"] = $result["access_token"];
+
+        file_put_contents("{$dataHome}/BAEToken", json_encode($tokens));
+    }
+    else if(!$funcCheckToken)
+    {
+        $tokens = json_decode(file_get_contents("{$dataHome}/BAEToken"), true);
+        $result = json_decode(shell_exec("curl -k -L -d 'grant_type=refresh_token&refresh_token={$tokens['refreshToken']}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token'"), true);
+
+        $tokens = [];
+        $tokens["createTime"] = $time;
+        $tokens["refreshToken"] = $result["refresh_token"];
+        $BAE_AccessToken = $tokens["accessToken"] = $result["access_token"];
+
+        file_put_contents("{$dataHome}/BAEToken", json_encode($tokens));
+    }
+    else
+    {
+        $tokens = json_decode(file_get_contents("{$dataHome}/BAEToken"), true);
+        $BAE_AccessToken = $tokens["accessToken"];
+    }
+
     return function($file) use($BAE_AppName, $BAE_AccessToken) {
         $filename = basename($file);
         return shell_exec("curl -k -L -F 'file=@{$file}' 'https://c.pcs.baidu.com/rest/2.0/pcs/file?method=upload&access_token={$BAE_AccessToken}&path=/apps/{$BAE_AppName}/{$filename}'");
