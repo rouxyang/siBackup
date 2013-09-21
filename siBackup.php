@@ -180,7 +180,7 @@ function BAEUploader($BAE_AppName, $BAE_ApiKey, $BAE_SecretKey)
         $result = json_decode(shell_exec("curl -k -L -d 'client_id={$BAE_ApiKey}&response_type=device_code&scope=basic,netdisk' 'https://openapi.baidu.com/oauth/2.0/device/code' 2>/dev/null"), true);
 
         $deviceCode = $result["device_code"];
-        print "Please open https://openapi.baidu.com/device in web browser and input {$result['user_code']}, and press any key to continue.\n";
+        print "Please open https://openapi.baidu.com/device in web browser and input {$result['user_code']}, then press any key to continue.\n";
         fgetc(STDIN);
 
         $result = json_decode(shell_exec("curl -k -L -d 'grant_type=device_token&code={$deviceCode}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token' 2>/dev/null"), true);
