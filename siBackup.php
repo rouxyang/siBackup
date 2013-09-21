@@ -29,13 +29,23 @@
  * 该脚本默认会创建一个名为 /root/siBackup/ 的文件夹($dataHome)用于储存数据和临时文件。
  *
  * * $dataHome/lastBackupTime 以时间戳的形式保存上次备份时间
- * * $dataHome/BAEToken BAE 的 API 授权信息
+ * * $dataHome/BAEToken BAE 的 PCS API 授权信息
  * * $dataHome/<username>.list 本次备份的文件列表，将以 -T 参数传给 tar
  * * $dataHome/<time>-(<node>)<username>.tar.gz 每个用户的备份包，上传后会被删除
  * * $dataHome/<username>.time.json 每个文件的上次备份时间，JSON 格式
  *
  * 所有时间为 Unix 时间戳，所有路径末尾不含斜杠。
  */
+
+if(!isset($argc))
+    die("please run this script from shell");
+
+/** @var string $dataHome 用于储存数据和临时文件的路径 */
+$dataHome = "/root/siBackup";
+
+if(!file_exists($dataHome))
+    mkdir($dataHome);
+$time = time();
 
 /** @var array $exclude 要排除的文件(正则表达式) */
 $exclude = [
@@ -54,25 +64,15 @@ $excludeSize = 10 * 1024 * 1024;
 /** @var int $scrollCycle 滚动周期(s) */
 $scrollCycle = 7 * 24 * 3600;
 
-/** @var string $dataHome 用于储存数据和临时文件的路径 */
-$dataHome = "/root/siBackup";
-
 $nodeName = "main";
 
 $uploader = BAEUploader("siBackup", 'vi4BQrheygB0SO4SFACNpGYn', 'GtWUnndR1RVXKwKY5I2iT2dXteRQG14');
 
 $timeStr = date("Y.m.d-H-i");
 
-//error_reporting(0);
+error_reporting(0);
 
 /* 配置信息结束，以下为主程序 */
-
-if(!isset($argc))
-    die("please run this script from shell");
-
-if(!file_exists($dataHome))
-    mkdir($dataHome);
-$time = time();
 
 $lastBackupTime = file_get_contents("{$dataHome}/lastBackupTime");
 $lastBackupTime = (intval($lastBackupTime) > 0) ? intval($lastBackupTime): 0;
@@ -103,14 +103,14 @@ function backupDir($homeDir)
     file_put_contents($listfilePath, implode("\n", searchFiles($homeDir, $timefile)));
     file_put_contents($timefilePath, json_encode($timefile));
 
-    print "Packaging file in {$homeDir} ...\n";
+    print "Packaging files in {$homeDir} ...\n";
 
     $tarfilePath = "{$dataHome}/{$timeStr}-({$nodeName})" . basename($homeDir) . ".tar.gz";
     shell_exec("tar cz -C {$homeDir} -T {$listfilePath} -f '{$tarfilePath}'");
 
     print "BAE Uploading file " . basename($tarfilePath) . " ...\n";
 
-    print $uploader($tarfilePath) . "\n";
+    $uploader($tarfilePath);
     unlink($tarfilePath);
 }
 
@@ -137,6 +137,9 @@ function searchFiles($homeDir, &$filetime)
                         continue 2;
 
                 if($fileinfo->getSize() > $excludeSize)
+                    continue;
+
+                if(!$rFilePath)
                     continue;
 
                 $mTime = $fileinfo->getMTime();
@@ -174,13 +177,13 @@ function BAEUploader($BAE_AppName, $BAE_ApiKey, $BAE_SecretKey)
 
     if(!file_exists("{$dataHome}/BAEToken"))
     {
-        $result = json_decode(shell_exec("curl -k -L -d 'client_id={$BAE_ApiKey}&response_type=device_code&scope=basic,netdisk' 'https://openapi.baidu.com/oauth/2.0/device/code'"), true);
+        $result = json_decode(shell_exec("curl -k -L -d 'client_id={$BAE_ApiKey}&response_type=device_code&scope=basic,netdisk' 'https://openapi.baidu.com/oauth/2.0/device/code' 2>/dev/null"), true);
 
         $deviceCode = $result["device_code"];
-        print "Please open https://openapi.baidu.com/device in web browser and input {$result['user_code']}, press any key to continue.\n";
+        print "Please open https://openapi.baidu.com/device in web browser and input {$result['user_code']}, and press any key to continue.\n";
         fgetc(STDIN);
 
-        $result = json_decode(shell_exec("curl -k -L -d 'grant_type=device_token&code={$deviceCode}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token'"), true);
+        $result = json_decode(shell_exec("curl -k -L -d 'grant_type=device_token&code={$deviceCode}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token' 2>/dev/null"), true);
 
         $tokens = [];
         $tokens["createTime"] = $time;
@@ -192,7 +195,7 @@ function BAEUploader($BAE_AppName, $BAE_ApiKey, $BAE_SecretKey)
     else if(!$funcCheckToken)
     {
         $tokens = json_decode(file_get_contents("{$dataHome}/BAEToken"), true);
-        $result = json_decode(shell_exec("curl -k -L -d 'grant_type=refresh_token&refresh_token={$tokens['refreshToken']}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token'"), true);
+        $result = json_decode(shell_exec("curl -k -L -d 'grant_type=refresh_token&refresh_token={$tokens['refreshToken']}&client_id={$BAE_ApiKey}&client_secret={$BAE_SecretKey}' 'https://openapi.baidu.com/oauth/2.0/token' 2>/dev/null"), true);
 
         $tokens = [];
         $tokens["createTime"] = $time;
