@@ -139,7 +139,7 @@ function searchFiles($homeDir, &$filetime)
                 if($fileinfo->getSize() > $excludeSize)
                     continue;
 
-                if(!$rFilePath)
+                if(!strval($rFilePath))
                     continue;
 
                 $mTime = $fileinfo->getMTime();
