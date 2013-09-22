@@ -130,16 +130,13 @@ function searchFiles($homeDir, &$filetime)
             }
             else if(!$fileinfo->isLink() && !$fileinfo->isDot())
             {
-                $rFilePath = substr($fileinfo->getPathname(), strlen($homeDir) + 1);
+                $rFilePath = mb_convert_encoding(substr($fileinfo->getPathname(), strlen($homeDir) + 1), "UTF-8");
 
                 foreach($exclude as $rx)
                     if(preg_match("/{$rx}/", $rFilePath))
                         continue 2;
 
                 if($fileinfo->getSize() > $excludeSize)
-                    continue;
-
-                if(!strval($rFilePath))
                     continue;
 
                 $mTime = $fileinfo->getMTime();
