@@ -68,9 +68,8 @@ $nodeName = "main";
 
 $uploader = BAEUploader("siBackup", 'vi4BQrheygB0SO4SFACNpGYn', 'GtWUnndR1RVXKwKY5I2iT2dXteRQG14');
 
+date_default_timezone_set("Asia/Shanghai");
 $timeStr = date("Y.m.d-H-i");
-
-error_reporting(0);
 
 /* 配置信息结束，以下为主程序 */
 
