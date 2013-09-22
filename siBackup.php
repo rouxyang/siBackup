@@ -130,7 +130,8 @@ function searchFiles($homeDir, &$filetime)
             }
             else if(!$fileinfo->isLink() && !$fileinfo->isDot())
             {
-                $rFilePath = mb_convert_encoding(substr($fileinfo->getPathname(), strlen($homeDir) + 1), "UTF-8");
+                $rFilePath = substr($fileinfo->getPathname(), strlen($homeDir) + 1);
+                $rFilePathUtf8 = mb_convert_encoding($rFilePath, "UTF-8");
 
                 foreach($exclude as $rx)
                     if(preg_match("/{$rx}/", $rFilePath))
@@ -143,12 +144,12 @@ function searchFiles($homeDir, &$filetime)
 
                 if(
                     $mTime > $lastBackupTime or
-                    !isset($filetime[$rFilePath]) or
-                    intval($filetime[$rFilePath]) < (time() - $scrollCycle)
+                    !isset($filetime[$rFilePathUtf8]) or
+                    intval($filetime[$rFilePathUtf8]) < (time() - $scrollCycle)
                 )
                 {
                     $files[] = $rFilePath;
-                    $filetime[$rFilePath] = time();
+                    $filetime[$rFilePathUtf8] = time();
                 }
             }
         }
